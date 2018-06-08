@@ -30,11 +30,10 @@ from getuserinfo import *
 # GENERAL:
 # -. gather information about how long each part of this code takes to run
 # -. understand and condense getting the user id ^^ above
-# -. how do we loop through a class' object (used to determine length of each list) https://stackoverflow.com/questions/19151/build-a-basic-python-iterator
 # BUG. handle file path lengths that are longer than 260 characters (microsoft limitation)
+# BUG. finding files without file extensions? or there are path names that are broken
 # -. update import statements to be more concise
 # -. clean up recurssive code.. can we make a function that fills an object maybe
-# -. add shouldfind function which decides wether or not the file should be reported
 # -. all functions should have input/output validation
 #
 # INTERFACE/USE:
@@ -50,6 +49,9 @@ from getuserinfo import *
 # -. add parent directory to class.. 4438, 3379.. etc.
 # -. pull extension, project,filename and add it to list.. then output
 # -. shouldflag should be changed to take an individual user object
+# -. add shouldfind function which decides wether or not the file should be reported
+# -. how do we loop through a class' object (used to determine length of each list) https://stackoverflow.com/questions/19151/build-a-basic-python-iterator
+# -------. answer getattr
 
 class userstat():
     def __init__(self):
@@ -117,20 +119,36 @@ def shouldflag(entry):
     if days >= 365:
         return True
 def shouldfind(fileaddress, criteria):
-    #
-    # add checks for other critieria to find
-    # should be an or statement
-    #
-    if stat(fileaddress).st_size/1E9 > criteria.size[-1]:
-        return True
-    else:
-        return False
+    for key in criteria.__dict__:
+        if len(getattr(criteria,key)) <1:
+            continue
+        if key == "size":
+            if stat(fileaddress).st_size/1E9 > criteria.size[-1]:
+                return True
+        elif key == "extension":
+            thisextension = getextension(fileaddress)
+            for ext in getattr(criteria,key):
+                if thisextension == ext:
+                    return True
+    return False
+    
+    
 
 
-def getowner(thisfile):
-    pSD = get_file_security(thisfile)
+def getowner(thisaddress):
+    pSD = get_file_security(thisaddress)
     owner, owner_domain, owner_sid_type = pSD.get_owner()
     return owner
+
+def getextension(thisaddress):
+    _ , extension = os.path.splitext(thisaddress)
+    return extension
+
+def getdatemodified(thisaddress):
+    return datetime.datetime.fromtimestamp(stat(thisaddress).st_mtime).strftime("%Y%m%d")
+
+def getdatecreated(thisaddress):
+    return datetime.datetime.fromtimestamp(stat(thisaddress).st_ctime).strftime("%Y%m%d")
 
 # users, savepath, option
 def writecsv(allusers, option):
@@ -144,7 +162,7 @@ def writecsv(allusers, option):
             with open('data_%s.csv' %(allusers[usernum].id),'w') as outputfile:
                 for filenum in range(len(allusers[usernum].size)):
 
-                    template = '%s,%.2f,%s,%s,%s,%s\r'
+                    template = '%s,%.2f,%s,%s,%s,%s,%s,%s\r'
 
                     # FIX THIS
 
@@ -158,13 +176,13 @@ def writecsv(allusers, option):
 
                     outputfile.write(template % (
                         allusers[usernum].id, 
-                        allusers[usernum].size,
-                        allusers[usernum].project, 
-                        allusers[usernum].filename,
-                        allusers[usernum].extension,
-                        allusers[usernum].created, 
-                        allusers[usernum].modified,
-                        allusers[usernum].fileaddress
+                        allusers[usernum].size[filenum],
+                        allusers[usernum].project[filenum], 
+                        allusers[usernum].filename[filenum],
+                        allusers[usernum].extension[filenum],
+                        allusers[usernum].created[filenum], 
+                        allusers[usernum].modified[filenum],
+                        allusers[usernum].fileaddress[filenum]
                         ))
     return 
 
@@ -198,7 +216,7 @@ def nextdir (thispath):
             # Bug, when the path is longer than 260 characters then microsoft cannot get statistics about this file.. filenotfound error
             if len(fileaddress)>=260:
                 continue
-            if shouldfind(fileaddress, criteria): 
+            if shouldfind(fileaddress, lookcriteria): 
                 # find this users object in the list
                 userid = 0
                 owner = getowner(fileaddress)
@@ -216,8 +234,8 @@ def nextdir (thispath):
                 # add information to the users object
                 allusers[userid].addfileaddress(fileaddress) 
                 allusers[userid].addsize(stat(fileaddress).st_size/1E9) 
-                allusers[userid].addmodified(datetime.datetime.fromtimestamp(statinfo.st_mtime).strftime("%Y%m%d")) 
-                allusers[userid].addcreated(datetime.datetime.fromtimestamp(statinfo.st_ctime).strftime("%Y%m%d"))
+                allusers[userid].addmodified(getdatemodified(fileaddress)) 
+                allusers[userid].addcreated(getdatecreated(fileaddress))
                 allusers[userid].addproject(fileaddress)
                 _, extension = os.path.splitext(fileaddress)
                 allusers[userid].addextension(extension)
@@ -242,9 +260,11 @@ mypath = "P:/4041_PANASONIC_BOMBARDIER_BIRDSTRIKE"
 #mypath = "P:/"
 globpath = os.getcwd()  
 
-criteria = userstat()
-criteria.addextension(".modfem")
-criteria.addsize(0.1)
+
+lookcriteria = userstat()
+lookcriteria.addextension(".modfem")
+lookcriteria.addextension(".op2")
+lookcriteria.addsize(0.1)
 
 
 allusers = nextdir(mypath)
