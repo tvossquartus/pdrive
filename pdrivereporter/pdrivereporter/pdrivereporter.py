@@ -5,6 +5,7 @@ import os
 import datetime
 from getuserinfo import *
 
+
 #from pandas import read_csv
 #from pandas import concat
 #import glob 
@@ -30,6 +31,7 @@ from getuserinfo import *
 # GENERAL:
 # -. gather information about how long each part of this code takes to run
 # -. understand and condense getting the user id ^^ above
+# -. import csv and delete items that are marked as true
 # BUG. handle file path lengths that are longer than 260 characters (microsoft limitation)
 # BUG. finding files without file extensions? or there are path names that are broken
 # -. update import statements to be more concise
@@ -64,6 +66,7 @@ class userstat():
         self.extension = [] # e.g. .log, .op2, .modfem
         self.filename = [] # e.g. thisfile
         self.project = [] # e.g. 1001_viasat, 1234_boeing
+        self.keyword = []
     def setid(self,var):
         self.id = var
     def addfileaddress(self,var): 
@@ -77,53 +80,49 @@ class userstat():
     def addflag(self,var):
         self.flagged.append(var)
     def addextension(self,var): 
-        # takes in fileaddress and parses out the file extension
         self.extension.append(var)
     def addfilename(self,var):
-        # takes in fileaddress and parses out the file name
-        filename, extension = os.path.splitext(var)
-        self.filename.append(filename)
+        self.filename.append(var)
     def addproject(self,var):
-        # takes in fileaddress and parses out the project i.e. top level folder
-        temp = var.split(":/")
-        temp = temp[1].split("\\")
-        self.project.append(temp[0])
+        self.project.append(var)
+    def addkeyword(self,var):
+        self.keyword.append(var)
 
-def shouldflag(entry):
-
-    # check to make sure this entry is only a single entry and not multiple
-    #for key in entry.__dict__:
-    # place holder ----
-    #
-    # setattr
-    #
+def shouldflag(entry, criteria):
 
     # pulls information out of this entry object
     filename = entry.filename[-1]
     datemodified = entry.modified[-1]
-
-    # check to see if this file extension is expected to be deletable
-    _ , extension = os.path.splitext(filename)
-    illegalextension = []
-    illegalextension.append(".log")
-    illegalextension.append(".op2")
-    illegalextension.append(".Qout")
-    for ext in illegalextension:
-        if ext == extension:
-            return True 
+    extension = entry.extension[-1]
 
     # number of days since last time this file was last modified (saved)
-    modifiedon = datetime.datetime.strptime(datemodified,'%Y%m%d')
-    timedif = datetime.datetime.now() - modifiedon 
+    timedif = entry.modified[-1] - criteria.modified[-1]
     days = timedif.days
-    if days >= 365:
+    if days < 0:
         return True
+
+    for word in criteria.keyword:
+        if word in entry.fileaddress[-1]:
+            return True
+
+    for ext in criteria.extension:
+        if ext == extension:
+            return True
+    
+    
+
+
+
+    return False
+
+    # if there is a keyword in the path/name that says delete
+
 def shouldfind(fileaddress, criteria):
     for key in criteria.__dict__:
         if len(getattr(criteria,key)) <1:
             continue
         if key == "size":
-            if stat(fileaddress).st_size/1E9 > criteria.size[-1]:
+            if getsize(fileaddress) > criteria.size[-1]:
                 return True
         elif key == "extension":
             thisextension = getextension(fileaddress)
@@ -132,23 +131,24 @@ def shouldfind(fileaddress, criteria):
                     return True
     return False
     
-    
-
-
+# -- pull data out of the file address
 def getowner(thisaddress):
     pSD = get_file_security(thisaddress)
     owner, owner_domain, owner_sid_type = pSD.get_owner()
     return owner
-
 def getextension(thisaddress):
     _ , extension = os.path.splitext(thisaddress)
     return extension
-
 def getdatemodified(thisaddress):
-    return datetime.datetime.fromtimestamp(stat(thisaddress).st_mtime).strftime("%Y%m%d")
-
+    return datetime.datetime.fromtimestamp(stat(thisaddress).st_mtime)
 def getdatecreated(thisaddress):
-    return datetime.datetime.fromtimestamp(stat(thisaddress).st_ctime).strftime("%Y%m%d")
+    return datetime.datetime.fromtimestamp(stat(thisaddress).st_ctime)
+def getproject(thisaddress):
+    temp = thisaddress.split(":/")
+    temp = temp[1].split("\\")
+    return temp[0]
+def getsize(thisaddress):
+    return stat(fileaddress).st_size/1073741824
 
 # users, savepath, option
 def writecsv(allusers, option):
@@ -162,16 +162,16 @@ def writecsv(allusers, option):
             with open('data_%s.csv' %(allusers[usernum].id),'w') as outputfile:
                 for filenum in range(len(allusers[usernum].size)):
 
-                    template = '%s,%.2f,%s,%s,%s,%s,%s,%s\r'
-
-                    # FIX THIS
+                    template = '%s,%.2f,%s,%s,%s,%s,%s,%s,%s\r'
+                    datetemplate = "%Y%m%d"
+                    isflagged = "False"
 
                     # check if this particular item is flagged
                     for flagid in range(len(allusers[usernum].flagged)):
                         if allusers[usernum].flagged[flagid] > filenum:
                             break
                         elif allusers[usernum].flagged[flagid] == filenum:
-                            var5 = "True"
+                            isflagged = "True"
                             break
 
                     outputfile.write(template % (
@@ -180,8 +180,9 @@ def writecsv(allusers, option):
                         allusers[usernum].project[filenum], 
                         allusers[usernum].filename[filenum],
                         allusers[usernum].extension[filenum],
-                        allusers[usernum].created[filenum], 
-                        allusers[usernum].modified[filenum],
+                        allusers[usernum].created[filenum].strftime(datetemplate), 
+                        allusers[usernum].modified[filenum].strftime(datetemplate),
+                        isflagged,
                         allusers[usernum].fileaddress[filenum]
                         ))
     return 
@@ -197,11 +198,7 @@ def concatenate(inputdir, outputdir):
         fulldata.append(datainfile)
     concatdata = pandas.concat(fulldata,axis=0)
     concatdata.to_csv(outputdir,index=None)
-
-def addtouser(user,filename):
-    #place holder
-    return
-    
+   
 # recursive function to search through each file
 def nextdir (thispath):
     # initialize a list which contains an object for each user who has ever created a file
@@ -233,42 +230,53 @@ def nextdir (thispath):
 
                 # add information to the users object
                 allusers[userid].addfileaddress(fileaddress) 
-                allusers[userid].addsize(stat(fileaddress).st_size/1E9) 
+                allusers[userid].addsize(getsize(fileaddress)) 
                 allusers[userid].addmodified(getdatemodified(fileaddress)) 
                 allusers[userid].addcreated(getdatecreated(fileaddress))
-                allusers[userid].addproject(fileaddress)
-                _, extension = os.path.splitext(fileaddress)
-                allusers[userid].addextension(extension)
+                allusers[userid].addproject(getproject(fileaddress))
+                allusers[userid].addextension(getextension(fileaddress))
                 allusers[userid].addfilename(filename)
                 # check if this file is flaged to be deleted
-                if shouldflag(allusers[userid]) == True:
+                if shouldflag(allusers[userid], flagcriteria) == True:
                     # if so add this index to a list
                     allusers[userid].addflag(len(allusers[userid].size))
 
     return allusers
 
 
-
-
-
-# only add files to the list if they are greater than this limit (Gb)
-sizelimit = 0.1                    
+              
                 
 #mypath = "P:/1377_OSC_ONSITE"
 #mypath = "P:/3379-Scaled-Stratolaunch"
-mypath = "P:/4041_PANASONIC_BOMBARDIER_BIRDSTRIKE"
-#mypath = "P:/"
-globpath = os.getcwd()  
+#mypath = "P:/4041_PANASONIC_BOMBARDIER_BIRDSTRIKE"
+mypath = "P:/"
 
 
+# if any of this criteria is satisfied then it will be documented
 lookcriteria = userstat()
-lookcriteria.addextension(".modfem")
-lookcriteria.addextension(".op2")
+#for number in range(100):
+#    if number < 10:
+        #lookcriteria.addextension(".0%.0f" % (number))
+    #elif number >= 10:
+     #   lookcriteria.addextension(".%.0f" % (number))
 lookcriteria.addsize(0.1)
+
+# if any of this criteria is satisfied then it will be flagged as "deletable"
+flagcriteria = userstat()
+#for number in range(100):
+ #   if number < 10:
+  #      flagcriteria.addextension(".0%.0f" % (number))
+   # elif number >= 10:
+    #    flagcriteria.addextension(".%.0f" % (number))
+flagcriteria.addmodified(datetime.datetime.now() - datetime.timedelta(days=2*365))
+flagcriteria.addkeyword("delete")
+
 
 
 allusers = nextdir(mypath)
 writecsv(allusers, 2)
+
+#globpath = os.getcwd()  
 #concatenate(globpath,globpath+'\\fulldata.csv')
 
 
