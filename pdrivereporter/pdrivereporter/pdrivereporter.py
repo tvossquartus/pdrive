@@ -148,41 +148,54 @@ def getsize(thisaddress):
     return stat(thisaddress).st_size/1073741824
 
 # users, savepath, option
-def writecsv(allusers, option):
+def writeoutput(allusers, writetype, filetype):
 
-    # option 1... all data in one file
-    if option == 1:
-        x=1
-    # option 2... each users data in a unique file
-    elif option == 2:
+    if filetype == "comma":
+        template = '%s,%.2f,%s,%s,%s,%s,%s,%s,%s\r'
+        ext = 'csv'
+    elif filetype == "tab":
+        template = '%s\t%.2f\t%s\t%s\t%s\t%s\t%s\t%s\t%s\r'
+        ext = 'txt'
+    datetemplate = "%y%m%d"
+
+    # sort through options
+    if writetype == "concatenate":
+        # write all data to one file
+        with open('data_all.%s' %(ext),'w') as outputfile:
+            for usernum in range(len(allusers)):
+                writestring = writeuser(allusers[usernum], template, datetemplate)
+                outputfile.write(writestring)
+    elif writetype == "individual":
+        # write each users data to their own file
         for usernum in range(len(allusers)):
-            with open('data_%s.csv' %(allusers[usernum].id),'w') as outputfile:
-                for filenum in range(len(allusers[usernum].size)):
+            with open('data_%s.%s' %(allusers[usernum].id, ext),'w') as outputfile:
+                writestring = writeuser(allusers[usernum], template, datetemplate)
+                outputfile.write(writestring)
 
-                    template = '%s,%.2f,%s,%s,%s,%s,%s,%s,%s\r'
-                    datetemplate = "%Y%m%d"
-                    isflagged = "False"
 
-                    # check if this particular item is flagged
-                    for flagid in range(len(allusers[usernum].flagged)):
-                        if allusers[usernum].flagged[flagid] > filenum:
-                            break
-                        elif allusers[usernum].flagged[flagid] == filenum:
-                            isflagged = "True"
-                            break
 
-                    outputfile.write(template % (
-                        allusers[usernum].id, 
-                        allusers[usernum].size[filenum],
-                        allusers[usernum].project[filenum], 
-                        allusers[usernum].filename[filenum],
-                        allusers[usernum].extension[filenum],
-                        allusers[usernum].created[filenum].strftime(datetemplate), 
-                        allusers[usernum].modified[filenum].strftime(datetemplate),
-                        isflagged,
-                        allusers[usernum].fileaddress[filenum]
-                        ))
-    return 
+# creates the string that will be written to the file
+def writeuser(user, template, datetemplate):
+    writestring = ""
+    for filenum in range(len(user.size)):
+        temp = template % (
+            user.id, 
+            user.size[filenum],
+            user.project[filenum], 
+            user.filename[filenum],
+            user.extension[filenum],
+            user.created[filenum].strftime(datetemplate), 
+            user.modified[filenum].strftime(datetemplate),
+            user.flagged[filenum],
+            user.fileaddress[filenum]
+            )
+        writestring = writestring + temp
+    return writestring
+    
+    
+
+
+
 
 # Creates one data file. Don't have to use if we have a better way
 def concatenate(inputdir, outputdir):
@@ -234,10 +247,12 @@ def nextdir (thispath):
                 allusers[userid].addproject(getproject(fileaddress))
                 allusers[userid].addextension(getextension(fileaddress))
                 allusers[userid].addfilename(filename)
+                allusers[userid].addflag(shouldflag(allusers[userid], flagcriteria))
+
                 # check if this file is flaged to be deleted
-                if shouldflag(allusers[userid], flagcriteria) == True:
+                #if shouldflag(allusers[userid], flagcriteria) == True:
                     # if so add this index to a list
-                    allusers[userid].addflag(len(allusers[userid].size))
+                    #allusers[userid].addflag(len(allusers[userid].size))
 
     return allusers
 
@@ -246,6 +261,7 @@ def nextdir (thispath):
                 
 #mypath = "P:/1377_OSC_ONSITE"
 mypath = "P:/3379-Scaled-Stratolaunch"
+#mypath = "C:/Users/tvoss/Desktop"
 #mypath = "P:/4041_PANASONIC_BOMBARDIER_BIRDSTRIKE"
 #mypath = "P:/"
 
@@ -270,7 +286,11 @@ flagcriteria.addmodified(datetime.datetime.now() - datetime.timedelta(days=2*365
 flagcriteria.addkeyword("delete")
 
 allusers = nextdir(mypath)
-writecsv(allusers, 2)
+
+# concatenated output or individual reports
+# tab/comma deliminated
+
+writeoutput(allusers, "concatenate", "tab")
 
 #globpath = os.getcwd()  
 #concatenate(globpath,globpath+'\\fulldata.csv')
