@@ -5,6 +5,8 @@ import os
 import datetime
 from getuserinfo import *
 
+import matplotlib 
+
 
 #from pandas import read_csv
 #from pandas import concat
@@ -108,10 +110,6 @@ def shouldflag(entry, criteria):
     for ext in criteria.extension:
         if ext == extension:
             return True
-    
-    
-
-
 
     return False
 
@@ -144,11 +142,10 @@ def getdatemodified(thisaddress):
 def getdatecreated(thisaddress):
     return datetime.datetime.fromtimestamp(stat(thisaddress).st_ctime)
 def getproject(thisaddress):
-    temp = thisaddress.split(":/")
-    temp = temp[1].split("\\")
-    return temp[0]
+    temp = thisaddress.split("\\")
+    return temp[1]
 def getsize(thisaddress):
-    return stat(fileaddress).st_size/1073741824
+    return stat(thisaddress).st_size/1073741824
 
 # users, savepath, option
 def writecsv(allusers, option):
@@ -210,6 +207,7 @@ def nextdir (thispath):
         # walk through each file
         for filename in filenames:
             fileaddress = dirpath + '\\' + filename
+            fileaddress = os.path.abspath(fileaddress)
             # Bug, when the path is longer than 260 characters then microsoft cannot get statistics about this file.. filenotfound error
             if len(fileaddress)>=260:
                 continue
@@ -247,9 +245,9 @@ def nextdir (thispath):
               
                 
 #mypath = "P:/1377_OSC_ONSITE"
-#mypath = "P:/3379-Scaled-Stratolaunch"
+mypath = "P:/3379-Scaled-Stratolaunch"
 #mypath = "P:/4041_PANASONIC_BOMBARDIER_BIRDSTRIKE"
-mypath = "P:/"
+#mypath = "P:/"
 
 
 # if any of this criteria is satisfied then it will be documented
@@ -270,8 +268,6 @@ flagcriteria = userstat()
     #    flagcriteria.addextension(".%.0f" % (number))
 flagcriteria.addmodified(datetime.datetime.now() - datetime.timedelta(days=2*365))
 flagcriteria.addkeyword("delete")
-
-
 
 allusers = nextdir(mypath)
 writecsv(allusers, 2)
